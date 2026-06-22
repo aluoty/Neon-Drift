@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react'
 import { setContext, updateCanvasSize, renderGame, renderMenuBackground, drawCountdown } from '../engine/renderer'
 import { setupInput } from '../engine/input'
-import { S, initStars, updateStars, modes, getCurrentMapIndex, maps } from '../engine/gameState'
+import { S, initStars, updateStars, modes, getCurrentMapIndex, getMaps } from '../engine/gameState'
 import { updatePlayer, updatePlayer2, updateBots, updateCamera, updateCountdown } from '../engine/physics'
 import { updateParticles } from '../engine/particles'
 import { updateEngineSound } from '../engine/audio'
@@ -86,7 +86,7 @@ const GameCanvas = React.forwardRef<{ frameDataRef: React.RefObject<GameFrameDat
           playerX: S.playerCar.x,
           playerBoost: S.playerCar.boost,
           playerColor: S.playerCar.color,
-          mapName: maps[getCurrentMapIndex() % maps.length].name,
+          mapName: getMaps()[getCurrentMapIndex() % getMaps().length].name,
           modeName: modes[S.selectedMode].name,
           multiplayer: modes[S.selectedMode].multiplayer,
           player2X: S.playerCar2.x,

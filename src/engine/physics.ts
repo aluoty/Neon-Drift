@@ -1,5 +1,5 @@
 import { getKeys } from './input'
-import { S, getCurrentMap, roadY, FX, ROAD_WIDTH, updateLevel } from './gameState'
+import { S, getCurrentMap, roadY, FX, ROAD_WIDTH, updateLevel, checkBoostPads } from './gameState'
 import { addParticle } from './particles'
 import { playTone } from './audio'
 
@@ -50,6 +50,23 @@ function spawnDriftSparks(car: typeof S.playerCar): void {
   }
 }
 
+function spawnBoostPadPickup(car: typeof S.playerCar): void {
+  for (let i = 0; i < 8; i++) {
+    const a = Math.random() * Math.PI * 2
+    addParticle({
+      x: car.x + Math.cos(a) * 15,
+      y: car.y + Math.sin(a) * 15,
+      vx: Math.cos(a) * 2 + (Math.random() - 0.5),
+      vy: Math.sin(a) * 2 + (Math.random() - 0.5),
+      life: 15 + Math.random() * 10,
+      maxLife: 25,
+      color: '#ffff00',
+      size: 2 + Math.random() * 2,
+      type: 'spark',
+    })
+  }
+}
+
 function updateCarPhysics(
   car: typeof S.playerCar,
   keys: Record<string, boolean>,
@@ -77,7 +94,6 @@ function updateCarPhysics(
   const turning = keys[aKey] || keys[dKey]
   const braking = keys[sKey]
 
-  // Drift mechanics: if turning + braking at speed, initiate drift
   if (turning && braking && speed > 2) {
     car.drifting = true
     const driftFactor = Math.min(1, (speed - 2) / 6)
@@ -85,7 +101,6 @@ function updateCarPhysics(
     car.driftAngle *= 0.97
     spawnDriftSparks(car)
   } else if (turning && speed > 3 && !braking) {
-    // Subtle drift at high speed
     car.drifting = true
     car.driftAngle += (keys[aKey] ? -1 : 1) * 0.005 * Math.min(1, (speed - 3) / 5)
     car.driftAngle *= 0.95
@@ -94,19 +109,15 @@ function updateCarPhysics(
     car.driftAngle *= 0.9
   }
 
-  // Apply steering (reduced during drift)
   const steerFactor = car.drifting ? 0.6 : 1
   if (keys[aKey]) car.angle -= car.turn * Math.max(1, speed * 0.08) * steerFactor
   if (keys[dKey]) car.angle += car.turn * Math.max(1, speed * 0.08) * steerFactor
 
-  // BOOST
   if (keys[boostKey] && car.boost > 0 && isPlayer1) {
     car.vx += fx * car.accel * 0.5
     car.vy += fy * car.accel * 0.5
     car.boost -= 0.8
     spawnBoostTrail(car, fx, fy)
-
-    // Screen shake on boost
     if (isPlayer1) {
       S.cam.shakeIntensity = Math.min(6, S.cam.shakeIntensity + 2)
     }
@@ -124,19 +135,16 @@ function updateCarPhysics(
     car.vy *= 0.9 + 0.1 * factor
   }
 
-  // Offroad penalty
   const dist = Math.abs(car.y - roadY(car.x))
   if (dist > ROAD_WIDTH / 2) {
     car.vx *= FX.penalty
     car.vy *= FX.penalty
   }
 
-  // Apply friction (less during drift for slide)
   const fric = car.drifting ? driftFriction : friction
   car.vx *= fric
   car.vy *= fric
 
-  // Update position using drift-influenced angle
   const moveAngle = car.angle + car.driftAngle * 0.5
   const mfx = Math.cos(moveAngle)
   const mfy = Math.sin(moveAngle)
@@ -144,10 +152,18 @@ function updateCarPhysics(
   car.x += mfx * moveSpeed
   car.y += mfy * moveSpeed
 
-  // Keep velocity aligned with actual movement
   if (moveSpeed > 0.1) {
     car.vx = mfx * moveSpeed
     car.vy = mfy * moveSpeed
+  }
+
+  // Check boost pads
+  if (checkBoostPads(car)) {
+    spawnBoostPadPickup(car)
+    if (isPlayer1) {
+      playTone(660, 0.1, 'sine')
+      S.cam.shakeIntensity = Math.min(6, S.cam.shakeIntensity + 3)
+    }
   }
 
   return moveSpeed
@@ -172,7 +188,6 @@ export function updateBots(): void {
   for (let i = 0; i < S.bots.length; i++) {
     const b = S.bots[i]
 
-    // Look further ahead based on speed
     const lookAhead = 150 + Math.hypot(b.vx, b.vy) * 5
     const tx = b.x + lookAhead
     const ty = roadY(tx)
@@ -182,12 +197,10 @@ export function updateBots(): void {
 
     const targetAngle = Math.atan2(dy, dx)
 
-    // Smoother steering for AI
     const angleDiff = targetAngle - b.angle
     const normalizedDiff = Math.atan2(Math.sin(angleDiff), Math.cos(angleDiff))
     b.angle += normalizedDiff * 0.04
 
-    // Avoid other bots
     let avoidX = 0
     let avoidY = 0
     for (const other of S.bots) {
@@ -216,12 +229,13 @@ export function updateBots(): void {
     b.x += b.vx
     b.y += b.vy
 
-    // Keep on road
     const dist = Math.abs(b.y - roadY(b.x))
     if (dist > ROAD_WIDTH / 2) {
       b.vx *= 0.95
       b.vy *= 0.95
     }
+
+    checkBoostPads(b)
   }
 }
 
@@ -231,7 +245,6 @@ export function updateCamera(): void {
   S.cam.x += (targetX - S.cam.x) * 0.08
   S.cam.y += (targetY - S.cam.y) * 0.08
 
-  // Apply shake
   if (S.cam.shakeIntensity > 0.1) {
     S.cam.shakeX = (Math.random() - 0.5) * S.cam.shakeIntensity * 2
     S.cam.shakeY = (Math.random() - 0.5) * S.cam.shakeIntensity * 2

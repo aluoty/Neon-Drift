@@ -30,6 +30,7 @@ export interface BotState {
   angle: number
   color: string
   driftAngle: number
+  boost: number
 }
 
 export interface Particle {
@@ -52,6 +53,11 @@ export interface Star {
   twinkleSpeed: number
 }
 
+export interface BoostPad {
+  worldX: number
+  width: number
+}
+
 export interface MapConfig {
   name: string
   roadFunc: (x: number) => number
@@ -64,6 +70,25 @@ export interface MapConfig {
   poleColor: string
   bgColor1: string
   bgColor2: string
+  boostPads: BoostPad[]
+}
+
+export interface SerializedMap {
+  name: string
+  finish: number
+  roadColor: string
+  edgeColor: string
+  centerColor: string
+  poleColor: string
+  bgColor1: string
+  bgColor2: string
+  amp1: number
+  freq1: number
+  amp2: number
+  freq2: number
+  amp3: number
+  freq3: number
+  boostPads: BoostPad[]
 }
 
 export interface GameMode {

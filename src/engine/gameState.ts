@@ -1,4 +1,4 @@
-import type { Car, CarState, BotState, MapConfig, GameMode, Camera, Star, GameState } from './types'
+import type { Car, CarState, BotState, MapConfig, GameMode, Camera, Star, GameState, SerializedMap } from './types'
 import { clearParticles } from './particles'
 
 export const ROAD_WIDTH = 220
@@ -16,7 +16,7 @@ export const modes: GameMode[] = [
   { name: 'Multiplayer', ai: false, multiplayer: true },
 ]
 
-export const maps: MapConfig[] = [
+export const builtinMaps: MapConfig[] = [
   {
     name: 'Neon City',
     roadFunc: x => Math.sin(x * 0.01) * 220 + Math.sin(x * 0.003) * 320,
@@ -29,6 +29,11 @@ export const maps: MapConfig[] = [
     poleColor: '#ff00ff',
     bgColor1: '#00101f',
     bgColor2: '#000011',
+    boostPads: [
+      { worldX: 1500, width: 60 },
+      { worldX: 3500, width: 60 },
+      { worldX: 5500, width: 60 },
+    ],
   },
   {
     name: 'Cyber Canyon',
@@ -42,6 +47,11 @@ export const maps: MapConfig[] = [
     poleColor: '#88ccff',
     bgColor1: '#0a0014',
     bgColor2: '#02000a',
+    boostPads: [
+      { worldX: 2000, width: 60 },
+      { worldX: 5000, width: 60 },
+      { worldX: 8000, width: 60 },
+    ],
   },
   {
     name: 'Voltage Ridge',
@@ -55,8 +65,68 @@ export const maps: MapConfig[] = [
     poleColor: '#44ff88',
     bgColor1: '#1a1000',
     bgColor2: '#0a0800',
+    boostPads: [
+      { worldX: 2500, width: 60 },
+      { worldX: 6000, width: 60 },
+      { worldX: 10000, width: 60 },
+      { worldX: 13000, width: 60 },
+    ],
   },
 ]
+
+export let customMaps: SerializedMap[] = []
+
+function toMapConfig(s: SerializedMap): MapConfig {
+  return {
+    name: s.name,
+    roadFunc: (x: number) =>
+      Math.sin(x * s.freq1) * s.amp1 +
+      Math.sin(x * s.freq2) * s.amp2 +
+      Math.cos(x * s.freq3) * s.amp3,
+    finish: s.finish,
+    aiSpeed: 0.3,
+    aiCount: 2,
+    roadColor: s.roadColor,
+    edgeColor: s.edgeColor,
+    centerColor: s.centerColor,
+    poleColor: s.poleColor,
+    bgColor1: s.bgColor1,
+    bgColor2: s.bgColor2,
+    boostPads: s.boostPads || [],
+  }
+}
+
+export function getMaps(): MapConfig[] {
+  return [...builtinMaps, ...customMaps.map(toMapConfig)]
+}
+
+export function loadCustomMaps(): void {
+  try {
+    const raw = localStorage.getItem('neon-drift-custom-maps')
+    if (raw) {
+      customMaps = JSON.parse(raw)
+    }
+  } catch {
+    customMaps = []
+  }
+}
+
+export function saveCustomMap(map: SerializedMap): void {
+  loadCustomMaps()
+  const idx = customMaps.findIndex(m => m.name === map.name)
+  if (idx >= 0) {
+    customMaps[idx] = map
+  } else {
+    customMaps.push(map)
+  }
+  localStorage.setItem('neon-drift-custom-maps', JSON.stringify(customMaps))
+}
+
+export function deleteCustomMap(name: string): void {
+  loadCustomMaps()
+  customMaps = customMaps.filter(m => m.name !== name)
+  localStorage.setItem('neon-drift-custom-maps', JSON.stringify(customMaps))
+}
 
 export const cars: Car[] = [
   { name: 'Neon', color: '#00ffff', accel: 0.32, turn: 0.042, maxSpeed: 10, grip: 0.92 },
@@ -78,6 +148,7 @@ export const S = {
   countdownValue: 0,
   countdownTimer: 0,
   levelUpFlash: 0,
+  boostPadHitTimers: [] as number[],
 
   playerCar: {
     x: 0, y: 0, vx: 0, vy: 0, angle: 0, boost: 100,
@@ -124,13 +195,15 @@ function randomAIColor(): string {
 }
 
 export function initMap(index: number): void {
+  const maps = getMaps()
   S.currentMapIndex = index % maps.length
   const map = maps[S.currentMapIndex]
   S.levelTarget = S.playerCar.x + map.finish
+  S.boostPadHitTimers = new Array(map.boostPads.length).fill(0)
 }
 
 export function getCurrentMap(): MapConfig {
-  return maps[S.currentMapIndex % maps.length]
+  return getMaps()[S.currentMapIndex % getMaps().length]
 }
 
 export function getCurrentMapIndex(): number {
@@ -180,6 +253,7 @@ export function spawnBots(): void {
       angle: 0,
       color: randomAIColor(),
       driftAngle: 0,
+      boost: 100,
     })
   }
 }
@@ -191,6 +265,7 @@ export function startCountdown(): void {
 }
 
 export function startGame(carIdx: number, mapIdx: number, modeIdx: number): void {
+  const mapsList = getMaps()
   const car = cars[carIdx]
   S.selectedCar = carIdx
   S.selectedMap = mapIdx
@@ -212,7 +287,7 @@ export function startGame(carIdx: number, mapIdx: number, modeIdx: number): void
 
   S.level = 1
   S.score = 0
-  S.currentMapIndex = S.selectedMap
+  S.currentMapIndex = mapIdx % mapsList.length
   S.levelUpFlash = 0
   resetPlayers()
   initMap(S.currentMapIndex)
@@ -223,11 +298,38 @@ export function startGame(carIdx: number, mapIdx: number, modeIdx: number): void
 
 export function updateLevel(): void {
   if (S.playerCar.x > S.levelTarget) {
+    const mapsList = getMaps()
     S.level++
-    S.currentMapIndex++
+    S.currentMapIndex = (S.currentMapIndex + 1) % mapsList.length
     S.levelUpFlash = 60
     initMap(S.currentMapIndex)
     spawnBots()
   }
   if (S.levelUpFlash > 0) S.levelUpFlash--
+}
+
+export const maps = builtinMaps
+
+export function checkBoostPads(car: { x: number; y: number; vx: number; vy: number; boost: number }): boolean {
+  const map = getCurrentMap()
+  let hit = false
+  for (let i = 0; i < map.boostPads.length; i++) {
+    const pad = map.boostPads[i]
+    if (S.boostPadHitTimers[i] > 0) {
+      S.boostPadHitTimers[i]--
+      continue
+    }
+    const dist = Math.abs(car.x - pad.worldX)
+    const onRoad = Math.abs(car.y - roadY(car.x)) < ROAD_WIDTH / 2
+    if (dist < pad.width / 2 && onRoad) {
+      const speed = Math.hypot(car.vx, car.vy)
+      const factor = 1 + Math.max(0, (12 - speed) / 12) * 0.5
+      car.vx *= 1 + 0.3 * factor
+      car.vy *= 1 + 0.3 * factor
+      car.boost = Math.min(100, car.boost + 20)
+      S.boostPadHitTimers[i] = 30
+      hit = true
+    }
+  }
+  return hit
 }

@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef } from 'react'
-import { modes, maps, cars } from '../engine/gameState'
+import { useState, useEffect, useRef, useMemo } from 'react'
+import { modes, cars, getMaps, loadCustomMaps, deleteCustomMap } from '../engine/gameState'
 import { startGame } from '../engine/gameState'
 import { initAudio, playTone } from '../engine/audio'
 
 interface MenuProps {
   onStart: () => void
+  onEditor: () => void
 }
 
 const containerStyle: React.CSSProperties = {
@@ -102,6 +103,18 @@ const cardDetailStyle: React.CSSProperties = {
   color: '#88aacc',
 }
 
+const badgeStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: 4,
+  right: 4,
+  fontSize: '0.55rem',
+  padding: '1px 5px',
+  borderRadius: 3,
+  background: '#ff00ff44',
+  color: '#ff88ff',
+  border: '1px solid #ff00ff66',
+}
+
 const startButtonStyle: React.CSSProperties = {
   padding: '0.7rem 2.5rem',
   fontSize: 'clamp(0.9rem, 1.5vw, 1.1rem)',
@@ -117,6 +130,17 @@ const startButtonStyle: React.CSSProperties = {
   transition: 'all 0.2s',
   marginTop: '0.3rem',
   textShadow: '0 0 10px rgba(0,255,255,0.5)',
+}
+
+const editorButtonStyle: React.CSSProperties = {
+  ...startButtonStyle,
+  border: '2px solid #ff8800',
+  color: '#ff8800',
+  textShadow: '0 0 10px rgba(255,136,0,0.5)',
+  background: 'linear-gradient(135deg, rgba(255,136,0,0.2), rgba(200,80,0,0.1))',
+  fontSize: 'clamp(0.7rem, 1.2vw, 0.9rem)',
+  padding: '0.5rem 1.5rem',
+  marginTop: 0,
 }
 
 const summaryStyle: React.CSSProperties = {
@@ -148,15 +172,39 @@ const controlsHintStyle: React.CSSProperties = {
   lineHeight: 1.8,
 }
 
-export function Menu({ onStart }: MenuProps) {
+const deleteBtnStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: 4,
+  left: 4,
+  width: 18,
+  height: 18,
+  border: '1px solid #ff4444',
+  borderRadius: 3,
+  background: 'rgba(255,68,68,0.2)',
+  color: '#ff4444',
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+  fontSize: '0.6rem',
+  lineHeight: '16px',
+  textAlign: 'center',
+  padding: 0,
+}
+
+export function Menu({ onStart, onEditor }: MenuProps) {
   const [page, setPage] = useState(0)
   const [selMode, setSelMode] = useState(1)
   const [selMap, setSelMap] = useState(0)
   const [selCar, setSelCar] = useState(0)
   const [glowOffset, setGlowOffset] = useState(0)
+  const [mapsVersion, setMapsVersion] = useState(0)
   const titleRef = useRef<HTMLDivElement>(null)
 
   const tabs = ['Mode', 'Track', 'Car']
+
+  useEffect(() => {
+    loadCustomMaps()
+    setMapsVersion(v => v + 1)
+  }, [])
 
   useEffect(() => {
     let raf = 0
@@ -168,13 +216,23 @@ export function Menu({ onStart }: MenuProps) {
     return () => cancelAnimationFrame(raf)
   }, [])
 
+  const allMaps = useMemo(() => getMaps(), [mapsVersion])
+
   const handleStart = () => {
+    if (selMap >= allMaps.length) return
     initAudio()
     playTone(523, 0.1, 'square')
     setTimeout(() => playTone(659, 0.1, 'square'), 80)
     setTimeout(() => playTone(784, 0.15, 'square'), 160)
     startGame(selCar, selMap, selMode)
     onStart()
+  }
+
+  const handleDelete = (name: string, idx: number) => {
+    deleteCustomMap(name)
+    loadCustomMaps()
+    setMapsVersion(v => v + 1)
+    if (selMap === idx + 3) setSelMap(0)
   }
 
   return (
@@ -221,31 +279,55 @@ export function Menu({ onStart }: MenuProps) {
       )}
 
       {page === 1 && (
-        <div style={gridStyle}>
-          {maps.map((m, i) => {
-            const edgeColor = /** @type {typeof m} */ (m).edgeColor || '#00ffff'
-            return (
-              <div
-                key={m.name}
-                style={{
-                  ...cardStyle(selMap === i, edgeColor),
-                }}
-                onClick={() => setSelMap(i)}
-              >
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 'min(85vw, 650px)' }}>
+          <div style={gridStyle}>
+            {allMaps.map((m, i) => {
+              const isCustom = i >= 3
+              const edgeColor = m.edgeColor || '#00ffff'
+              return (
                 <div
+                  key={`${isCustom ? 'c' : 'b'}-${m.name}-${i}`}
                   style={{
-                    width: '100%',
-                    height: 4,
-                    borderRadius: 2,
-                    marginBottom: 6,
-                    background: `linear-gradient(90deg, ${edgeColor}, transparent)`,
+                    ...cardStyle(selMap === i, edgeColor),
+                    opacity: isCustom ? 0.85 : 1,
                   }}
-                />
-                <div style={cardTitleStyle}>{m.name}</div>
-                <div style={cardDetailStyle}>{m.finish}m &middot; {m.aiCount} AI</div>
-              </div>
-            )
-          })}
+                  onClick={() => setSelMap(i)}
+                >
+                  {isCustom && <span style={badgeStyle}>CUSTOM</span>}
+                  {isCustom && (
+                    <button style={deleteBtnStyle}
+                      onClick={e => { e.stopPropagation(); handleDelete(m.name, i) }}
+                      title="Delete map">&times;</button>
+                  )}
+                  <div
+                    style={{
+                      width: '100%',
+                      height: 4,
+                      borderRadius: 2,
+                      marginBottom: 6,
+                      background: `linear-gradient(90deg, ${edgeColor}, transparent)`,
+                    }}
+                  />
+                  <div style={cardTitleStyle}>{m.name}</div>
+                  <div style={cardDetailStyle}>{m.finish}m &middot; {m.aiCount} AI</div>
+                </div>
+              )
+            })}
+          </div>
+          <button
+            style={editorButtonStyle}
+            onClick={onEditor}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = 'rgba(255,136,0,0.25)'
+              e.currentTarget.style.boxShadow = '0 0 25px rgba(255,136,0,0.4)'
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = 'linear-gradient(135deg, rgba(255,136,0,0.2), rgba(200,80,0,0.1))'
+              e.currentTarget.style.boxShadow = 'none'
+            }}
+          >
+            CREATE MAP
+          </button>
         </div>
       )}
 
@@ -288,7 +370,7 @@ export function Menu({ onStart }: MenuProps) {
       </button>
 
       <div style={summaryStyle}>
-        {modes[selMode].name} &middot; {maps[selMap].name} &middot; {cars[selCar].name}
+        {modes[selMode].name} &middot; {allMaps[selMap]?.name ?? '???'} &middot; {cars[selCar].name}
       </div>
 
       <div style={controlsHintStyle}>

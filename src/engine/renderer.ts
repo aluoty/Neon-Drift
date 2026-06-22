@@ -32,14 +32,12 @@ function drawBackground(): void {
   ctx.fillStyle = gradient
   ctx.fillRect(0, 0, canvasW, canvasH)
 
-  // City skyline silhouette
   ctx.fillStyle = '#0a0a1a'
   for (let i = 0; i < 20; i++) {
     const bx = (i * 137 + 50) % (canvasW + 200) - 100
     const bh = 40 + ((i * 73) % 120)
     const bw = 30 + ((i * 47) % 40)
     ctx.fillRect(bx, canvasH - bh - 100, bw, bh)
-    // lit windows
     ctx.fillStyle = '#1a1a3a'
     for (let wy = canvasH - bh - 90; wy < canvasH - 110; wy += 15) {
       for (let wx = bx + 5; wx < bx + bw - 5; wx += 12) {
@@ -60,6 +58,53 @@ function drawBackground(): void {
   ctx.globalAlpha = 1
 }
 
+function drawBoostPads(): void {
+  if (!ctx) return
+  const map = getCurrentMap()
+  const time = performance.now() * 0.003
+
+  for (let i = 0; i < map.boostPads.length; i++) {
+    const pad = map.boostPads[i]
+    const worldX = pad.worldX
+    const y = roadY(worldX)
+    const sx = worldX - S.cam.x + canvasW / 2 + S.cam.shakeX
+    const sy = y - S.cam.y + canvasH / 2 + S.cam.shakeY
+
+    if (sx < -60 || sx > canvasW + 60) continue
+
+    const hitTimer = S.boostPadHitTimers?.[i] ?? 0
+    const alpha = hitTimer > 0 ? 0.3 : 0.7 + Math.sin(time + i) * 0.3
+    const halfW = pad.width / 2
+
+    // Glow
+    ctx.shadowColor = '#ffff00'
+    ctx.shadowBlur = hitTimer > 0 ? 8 : 15
+
+    // Pad arrow shape
+    ctx.fillStyle = `rgba(255,220,0,${alpha})`
+    ctx.beginPath()
+    ctx.moveTo(sx + halfW, sy)
+    ctx.lineTo(sx - halfW * 0.3, sy - 12)
+    ctx.lineTo(sx - halfW, sy - 12)
+    ctx.lineTo(sx - halfW, sy - 4)
+    ctx.lineTo(sx - halfW * 0.5, sy)
+    ctx.lineTo(sx - halfW, sy + 4)
+    ctx.lineTo(sx - halfW, sy + 12)
+    ctx.lineTo(sx - halfW * 0.3, sy + 12)
+    ctx.closePath()
+    ctx.fill()
+
+    ctx.shadowBlur = 0
+
+    // Border
+    ctx.strokeStyle = '#ffff00'
+    ctx.lineWidth = 2
+    ctx.globalAlpha = hitTimer > 0 ? 0.2 : 0.6
+    ctx.strokeRect(sx - halfW, sy - ROAD_WIDTH / 2, pad.width, ROAD_WIDTH)
+    ctx.globalAlpha = 1
+  }
+}
+
 function drawMapObjects(): void {
   if (!ctx) return
   const map = getCurrentMap()
@@ -69,14 +114,12 @@ function drawMapObjects(): void {
     const sx = worldX - S.cam.x + canvasW / 2 + S.cam.shakeX
     const sy = y - S.cam.y + canvasH / 2 + S.cam.shakeY
 
-    // Road poles
     ctx.shadowColor = map.poleColor
     ctx.shadowBlur = 10
     ctx.fillRect(sx - ROAD_WIDTH / 2 - 18, sy - 18, 8, 36)
     ctx.fillRect(sx + ROAD_WIDTH / 2 + 10, sy - 18, 8, 36)
     ctx.shadowBlur = 0
 
-    // Pole lights
     ctx.fillStyle = '#ffffff'
     ctx.shadowColor = '#ffffff'
     ctx.shadowBlur = 15
@@ -96,23 +139,16 @@ function drawFinishLine(): void {
 
   if (sx < -50 || sx > canvasW + 50) return
 
-  // Checkered pattern
   const tileSize = 10
   const halfRoad = ROAD_WIDTH / 2
   for (let row = 0; row < Math.ceil(ROAD_WIDTH / tileSize); row++) {
     for (let col = 0; col < 3; col++) {
       const isWhite = (row + col) % 2 === 0
       ctx.fillStyle = isWhite ? '#ffffff' : '#000000'
-      ctx.fillRect(
-        sx + (col - 1) * tileSize,
-        sy - halfRoad + row * tileSize,
-        tileSize,
-        tileSize,
-      )
+      ctx.fillRect(sx + (col - 1) * tileSize, sy - halfRoad + row * tileSize, tileSize, tileSize)
     }
   }
 
-  // Glow around finish
   ctx.shadowColor = '#ff00ff'
   ctx.shadowBlur = 20
   ctx.strokeStyle = '#ff00ff'
@@ -147,7 +183,6 @@ function drawRoad(): void {
 
   ctx.closePath()
 
-  // Road gradient shading
   const roadGrad = ctx.createLinearGradient(0, 0, 0, canvasH)
   roadGrad.addColorStop(0, map.roadColor)
   roadGrad.addColorStop(0.5, lightenColor(map.roadColor, 10))
@@ -161,7 +196,6 @@ function drawRoad(): void {
   ctx.lineWidth = 3
   ctx.stroke()
 
-  // Center line
   ctx.strokeStyle = map.centerColor
   ctx.lineWidth = 2
   ctx.setLineDash([15, 15])
@@ -192,7 +226,6 @@ function drawCarShape(x: number, y: number, angle: number, color: string, driftA
   ctx.translate(x, y)
   ctx.rotate(angle)
 
-  // Drift tilt visual
   if (Math.abs(driftAngle) > 0.01) {
     ctx.transform(1, 0, 0, 1, driftAngle * 3, 0)
   }
@@ -200,7 +233,6 @@ function drawCarShape(x: number, y: number, angle: number, color: string, driftA
   ctx.shadowColor = color
   ctx.shadowBlur = 22
 
-  // Main body
   ctx.fillStyle = color
   ctx.beginPath()
   ctx.moveTo(14, 0)
@@ -215,7 +247,6 @@ function drawCarShape(x: number, y: number, angle: number, color: string, driftA
   ctx.closePath()
   ctx.fill()
 
-  // Cockpit
   ctx.fillStyle = 'rgba(255,255,255,0.15)'
   ctx.beginPath()
   ctx.moveTo(6, 0)
@@ -225,7 +256,6 @@ function drawCarShape(x: number, y: number, angle: number, color: string, driftA
   ctx.closePath()
   ctx.fill()
 
-  // Headlights
   ctx.fillStyle = '#ffffaa'
   ctx.shadowColor = '#ffff00'
   ctx.shadowBlur = 10
@@ -234,14 +264,12 @@ function drawCarShape(x: number, y: number, angle: number, color: string, driftA
   ctx.shadowBlur = 22
   ctx.shadowColor = color
 
-  // Tail lights
   ctx.fillStyle = '#ff0044'
   ctx.shadowColor = '#ff0044'
   ctx.shadowBlur = 8
   ctx.fillRect(-14, -4, 2, 3)
   ctx.fillRect(-14, 1, 2, 3)
 
-  // Wheels
   ctx.shadowBlur = 6
   ctx.shadowColor = '#000'
   ctx.fillStyle = '#111'
@@ -250,7 +278,6 @@ function drawCarShape(x: number, y: number, angle: number, color: string, driftA
   ctx.fillRect(-9, 5, 4, 4)
   ctx.fillRect(4, 5, 4, 4)
 
-  // Wheel rims
   ctx.fillStyle = color
   ctx.shadowColor = color
   ctx.shadowBlur = 4
@@ -354,6 +381,7 @@ export function renderGame(): void {
   drawBackground()
   drawSpeedLines()
   drawFinishLine()
+  drawBoostPads()
   drawMapObjects()
   drawRoad()
   drawParticles()
